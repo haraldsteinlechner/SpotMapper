@@ -61,10 +61,23 @@ module FileUpload =
             ]
         ]
 
+type SpotResult = 
+    {
+        totalPrice : float<euro>
+        consideredConsumption : float<kwh>
+        fullConsumption : float<kwh>
+        consideredPrices : (int * int)
+    }
+
+type ComputationResult = 
+    | InputDataMissing
+    | IncorrectInputData of items : int * expected : int
+    | CouldNotCompute
+    | SpotResult of SpotResult
 
 type State = { 
     observedDay: Option<DateTime>; 
-    cost : Option<float<euro>>
+    cost : ComputationResult
     usage: Option<Parsing.Usages>
     prices: Option<Parsing.Prices> 
 }
@@ -86,17 +99,17 @@ let init() =
                     return Some r
             }
         ) () SetPrices
-    { observedDay = Some (DateTime(2024, 6, 16)); usage = None; prices = None; cost = None }, f
+    { observedDay = Some (DateTime(2024, 6, 16)); usage = None; prices = None; cost = InputDataMissing }, f
 
 let updateCost (s : State) =
     match s.usage, s.prices with
     | Some usage, Some prices ->
-        let constant = 1.6<euro/kwh> / 100.0
-        match SpotMapper.Computation.compute usage prices constant with 
-        | SpotResult.CostResult (cost, _, _) ->
-            { s with cost = Some cost }
+        //let constant = 1.9<euro/kwh> / 100.0
+        match SpotMapper.Computation.compute usage prices 0.0<euro/kwh> with 
+        | SpotResult.CostResult (cost, consideredUsage, fullConsumption, (foundEntries, totalEntries)) ->
+            { s with cost = SpotResult { fullConsumption = fullConsumption; consideredConsumption = consideredUsage; totalPrice = cost; consideredPrices = (foundEntries, totalEntries)} }
         | _ -> 
-            { s with cost = None }
+            { s with cost = CouldNotCompute }
     | _ -> s
 
 let strToCsv (str : string) =
@@ -111,7 +124,10 @@ let update (msg: Msg) (state: State) =
     | SetUsage usage -> 
         match SpotMapper.Computation.Parsing.parseUsage (strToCsv usage) with
         | (usages, parsedResults) ->
-            { state with usage = Some usages } |> updateCost, Cmd.none
+            if List.length usages <> 35136 then
+                { state with cost = IncorrectInputData(List.length usages, 35136) }, Cmd.none
+            else
+                { state with usage = Some usages } |> updateCost, Cmd.none
     | SetPrices prices ->
         match prices with
         | Some prices ->
@@ -217,9 +233,24 @@ let render (state: State) (dispatch: Msg -> unit) =
         ]
         Bulma.section [
             Bulma.field.div [
-                Bulma.label "Power consumption profile (smartmeter csv export, only 2024 is supported)"
-                Bulma.control.div [
-                    FileUpload.createFileUpload2 (dispatch << SetUsage)
+
+                Bulma.section [
+                    Bulma.label "1. Export the data like this in 15 minute intervals for the year 2024"
+                    Html.img [
+                        prop.src "./exampleExport.jpg"
+                        prop.alt "Placeholder Image"
+                        prop.style [
+                            style.width 300
+                            //style.height 300
+                        ]
+                    ]
+                ]
+
+                Bulma.section [
+                    Bulma.label "2. Set the power consumption profile (the file you just exported from the smartmeter)"
+                    Bulma.control.div [
+                        FileUpload.createFileUpload2 (dispatch << SetUsage)
+                    ]
                 ]
             ]
         
@@ -233,15 +264,32 @@ let render (state: State) (dispatch: Msg -> unit) =
 
         Bulma.section [
             match state.cost with
-            | None -> 
+            | ComputationResult.InputDataMissing -> 
                 Html.div [ 
                     prop.style [style.color.red]
                     prop.children [
                         Html.text "No cost calculated yet (provide a csv file above)"
                     ]
                 ]
-            | Some cost ->
-                Bulma.label (sprintf "Working price on spot market 2024: %.2f€" cost)
+            | ComputationResult.CouldNotCompute -> 
+                Html.div [ 
+                    prop.style [style.color.red]
+                    prop.children [
+                        Html.text "Could not compute"
+                    ]
+                ]
+            | ComputationResult.IncorrectInputData (items, expected) -> 
+                Html.div [ 
+                    prop.style [style.color.red]
+                    prop.children [
+                        Html.text (sprintf "Incorrect input data got %d items, expected %d (did you export with 15minutes interval?)" items expected)
+                    ]
+                ]
+            | ComputationResult.SpotResult cost ->
+                let considered, all = cost.consideredPrices
+                Bulma.label (sprintf "Your consumption would have resulted in %.2f €" cost.totalPrice)
+                Bulma.label (sprintf "...i considered %.2f kWh / %.2f kWh" cost.consideredConsumption cost.fullConsumption)
+                Bulma.label (sprintf "...for %d/%d intervals i found prices" considered all)
         ]
       
         Bulma.section [

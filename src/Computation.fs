@@ -26,7 +26,7 @@ type TimeInterval =
     }
 
 type SpotResult = 
-    | CostResult of cost : float<euro> * usage : float<kwh> * matchingPrices : (int * int)
+    | CostResult of cost : float<euro> * consideredConsumption : float<kwh> * fullConsumption : float<kwh> * matchingPrices : (int * int)
     | CouldNotCompute of string
 
 //let p = getPrice "2024-01-01 00:00:00,2024-01-01 00:15:00,0.10,"
@@ -48,7 +48,7 @@ let compute (usages : list<TimeInterval * float<kwh>>)
             | Some xs -> Map.add k (v :: xs) acc) Map.empty
 
 
-    let spotPrice = 
+    let spotPrices = 
         usages 
         |> Seq.map (fun (timeInterval, usage) -> 
             match Map.tryFind timeInterval.startTime startIntervals with
@@ -56,17 +56,33 @@ let compute (usages : list<TimeInterval * float<kwh>>)
             | Some [(t, price)] -> 
                 let price = usage * (price + constantCost)
                 Some price
+                Some (usage, price)
             | Some _ -> failwith "not implemented"
             | None -> 
                 printfn "%A" timeInterval
                 None
         )
-    
-    let validMatches = spotPrice |> Seq.filter Option.isSome |> Seq.length
-    let overallPrice = Seq.sumBy (Option.defaultValue 0.0<euro>) spotPrice
-    let overallUsage = usages |> Seq.sumBy (fun (_, usage) -> usage)    
+        
+    let totalPrice =    
+        spotPrices 
+        |> Seq.map (fun x -> 
+            match x with
+            | Some (_, price) -> price
+            | None -> 0.0<euro>)
+        |> Seq.sum
 
-    CostResult(overallPrice, overallUsage, (validMatches, Seq.length usages))
+    let consideredUsage = 
+        spotPrices 
+        |> Seq.map (fun x -> 
+            match x with
+            | Some (usage, _) -> usage
+            | None -> 0.0<kwh>)
+        |> Seq.sum
+
+    let validMatches = spotPrices |> Seq.filter Option.isSome |> Seq.length
+    let overallUsage = usages |> Seq.sumBy (fun (_, usage) -> usage)
+
+    CostResult(totalPrice, consideredUsage, overallUsage, (validMatches, Seq.length usages))
 
 
 module Parsing =
@@ -176,17 +192,18 @@ module Testing =
     open System.IO
 
     let readTestFile () =
-        let pricesFile = Path.Combine(__SOURCE_DIRECTORY__, "..", "assets","prices.csv")
+        let pricesFile = Path.Combine(__SOURCE_DIRECTORY__, "..", "public","prices.csv")
         let usageFile = Path.Combine(__SOURCE_DIRECTORY__, "..", "tests","exampleYearUsages.csv")
         let prices = File.ReadAllLines(pricesFile)
         let usage = File.ReadAllLines(usageFile)
         let prices = Parsing.parsePrices prices
-        let usage = Parsing.parseUsage usage
-        prices, usage
+        let usage, r = Parsing.parseUsage usage
+        printfn "%d" (List.length usage)
+        prices, (usage,r )
 
 
     let myTest =
         let (prices, failedPrices), (usages, failedUsages) = readTestFile()
-        compute usages prices (1.9<euro/kwh> / 100.0)
+        compute usages prices (0.0<euro/kwh> / 100.0)
 
 #endif
