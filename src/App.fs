@@ -217,7 +217,7 @@ let render (state: State) (dispatch: Msg -> unit) =
         ]
         Bulma.section [
             Bulma.field.div [
-                Bulma.label "Provide Usage File for 2024 (csv export)"
+                Bulma.label "Provide Usage File for (smartmeter csv export, only 2024 is supported)"
                 Bulma.control.div [
                     FileUpload.createFileUpload2 (dispatch << SetUsage)
                 ]
