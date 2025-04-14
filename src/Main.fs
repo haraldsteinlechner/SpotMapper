@@ -1,19 +1,10 @@
 module Main
 
-open Feliz
-open App
-open Browser.Dom
 open Elmish
+open Elmish.HMR 
 
-open Feliz
-open Elmish
-open Elmish.React
-open Elmish.HMR // Elmish.HMR needs to be the last open instruction in order to be able to shadow any supported API
+open SpotMapper
 
-
-//let root = ReactDOM.createRoot(document.getElementById "feliz-app")
-//root.render(Components.Counter())
-
-Program.mkProgram App.init update render
+Program.mkProgram App.init App.update App.render
 |> Program.withReactSynchronous "feliz-app"
 |> Program.run   
