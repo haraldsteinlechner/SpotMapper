@@ -230,6 +230,7 @@ let render (state: State) (dispatch: Msg -> unit) =
     Bulma.container [
         Bulma.section [
             Bulma.title.h1 "Spot Price Calculator"
+            Bulma.label "code on github."
         ]
         Bulma.section [
             Bulma.field.div [
@@ -288,6 +289,7 @@ let render (state: State) (dispatch: Msg -> unit) =
             | ComputationResult.SpotResult cost ->
                 let considered, all = cost.consideredPrices
                 Bulma.label (sprintf "Your consumption would have resulted in %.2f €" cost.totalPrice)
+                Bulma.label (sprintf "this is only the working price (Arbeitspreis ohne Netzgebühren, Aufschlag etc.)")
                 Bulma.label (sprintf "...i considered %.2f kWh / %.2f kWh" cost.consideredConsumption cost.fullConsumption)
                 Bulma.label (sprintf "...for %d/%d intervals i found prices" considered all)
         ]
